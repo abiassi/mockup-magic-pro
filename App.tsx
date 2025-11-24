@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { checkApiKey, promptForApiKey, generateMockup, analyzeImageForPrompts, regenerateSinglePrompt } from './services/geminiService';
+import { checkApiKey, promptForApiKey, setApiKey, generateMockup, analyzeImageForPrompts, regenerateSinglePrompt, getEnvApiKey, normalizeApiKey } from './services/geminiService';
 import { GenerationSettings, MockupResult, FrameStyle, LightingStyle, WallTexture, PrintSize, AnalysisVibe } from './types';
 import { 
   PhotoIcon, 
@@ -171,6 +171,11 @@ const MultiSelectPills = <T extends string>({
 
 const App: React.FC = () => {
   const [hasKey, setHasKey] = useState<boolean>(false);
+  const [hasEnvKey, setHasEnvKey] = useState<boolean>(false);
+  const [isBootstrappingKey, setIsBootstrappingKey] = useState<boolean>(true);
+  const [apiKeyInput, setApiKeyInput] = useState<string>("");
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [keyError, setKeyError] = useState<string>("");
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -208,15 +213,71 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      const authorized = await checkApiKey();
-      setHasKey(authorized);
+      try {
+        // Check if environment variables exist and are non-placeholder
+        const envKey = getEnvApiKey();
+        const hasEnv = !!envKey;
+        setHasEnvKey(hasEnv);
+        
+        // Check if any API key is available (env, AI Studio, or localStorage)
+        const authorized = await checkApiKey();
+        setHasKey(authorized);
+      } finally {
+        setIsBootstrappingKey(false);
+      }
     };
     init();
   }, []);
 
+  // Basic API key validation
+  const validateApiKey = (key: string): string | null => {
+    const normalized = normalizeApiKey(key);
+    if (!normalized) {
+      setKeyError(key.trim() ? "Please enter your actual Gemini API key (not the placeholder)." : "API key cannot be empty");
+      return null;
+    }
+    if (normalized.length < 10) {
+      setKeyError("API key appears to be invalid (too short)");
+      return null;
+    }
+    setKeyError("");
+    return normalized;
+  };
+
   const handleConnect = async () => {
-    await promptForApiKey();
-    setHasKey(true);
+    // If environment variables exist, use AI Studio prompt
+    if (hasEnvKey) {
+      await promptForApiKey();
+      const authorized = await checkApiKey();
+      setHasKey(authorized);
+      return;
+    }
+
+    // Otherwise, handle manual key entry
+    const normalizedKey = validateApiKey(apiKeyInput);
+    if (!normalizedKey) return;
+
+    setIsConnecting(true);
+    setKeyError("");
+
+    try {
+      // Save the key to localStorage
+      setApiKey(normalizedKey);
+      
+      // Verify the key works by checking again
+      const authorized = await checkApiKey();
+      if (authorized) {
+        setHasKey(true);
+        setApiKeyInput("");
+      } else {
+        setKeyError("Failed to validate API key. Please check and try again.");
+      }
+    } catch (error) {
+      setKeyError("An error occurred while saving the API key. Please try again.");
+      console.error(error);
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   // --- Magic Analysis ---
@@ -431,13 +492,91 @@ const App: React.FC = () => {
   }
 
   // --- Render ---
+  if (isBootstrappingKey) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+        <div className="bg-gray-800 border border-gray-700 rounded-xl px-6 py-5 flex items-center gap-3 shadow-2xl">
+          <ArrowPathIcon className="w-6 h-6 text-yellow-400 animate-spin" />
+          <div>
+            <p className="text-sm font-semibold text-white">Checking for API key...</p>
+            <p className="text-xs text-gray-400">Looking for environment or saved keys so you can start right away.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!hasKey) {
     return (
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center">
-          <SparklesIcon className="w-16 h-16 text-yellow-400 mx-auto mb-6" />
-          <h1 className="text-3xl font-bold text-white mb-2">Art Mockup Pro</h1>
-          <button onClick={handleConnect} className="w-full py-3 px-6 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg mt-6">Connect API Key</button>
+        <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700">
+          <div className="text-center mb-6">
+            <SparklesIcon className="w-16 h-16 text-yellow-400 mx-auto mb-6" />
+            <h1 className="text-3xl font-bold text-white mb-2">Art Mockup Pro</h1>
+            <p className="text-sm text-gray-400">Enter your Gemini API key to get started</p>
+          </div>
+          
+          {!hasEnvKey ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-2 uppercase tracking-wide">API Key</label>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setKeyError("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isConnecting) {
+                      handleConnect();
+                    }
+                  }}
+                  placeholder="Enter your Gemini API key"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/20"
+                  disabled={isConnecting}
+                />
+                {keyError && (
+                  <p className="mt-2 text-xs text-red-400">{keyError}</p>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  Your API key is stored locally in your browser and never sent to our servers.
+                </p>
+              </div>
+              <button
+                onClick={handleConnect}
+                disabled={isConnecting || !apiKeyInput.trim()}
+                className="w-full py-3 px-6 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {isConnecting ? (
+                  <>
+                    <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  "Save & Continue"
+                )}
+              </button>
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Don't have an API key?{" "}
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-yellow-500 hover:text-yellow-400 underline"
+                >
+                  Get one from Google AI Studio
+                </a>
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={handleConnect}
+              className="w-full py-3 px-6 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg transition-colors"
+            >
+              Connect API Key
+            </button>
+          )}
         </div>
       </div>
     );

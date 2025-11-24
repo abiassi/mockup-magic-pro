@@ -5,6 +5,20 @@ import { GenerationSettings, AnalysisVibe } from "../types";
 const MODEL_NAME = 'gemini-3-pro-image-preview';
 const ANALYSIS_MODEL = 'gemini-2.5-flash'; // Fast model for analyzing the image
 
+// Basic helper to sanitize API keys and ignore placeholders
+export const normalizeApiKey = (key?: string | null): string | null => {
+  if (!key) return null;
+  const trimmed = key.trim();
+  if (!trimmed || trimmed === 'your_gemini_api_key_here') return null;
+  return trimmed;
+};
+
+// Exported for UI so it can tell whether we shipped an env key
+export const getEnvApiKey = (): string | null => {
+  const envKey = (process.env.API_KEY || process.env.GEMINI_API_KEY) as string | undefined;
+  return normalizeApiKey(envKey);
+};
+
 // Helper for exponential backoff
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -270,18 +284,23 @@ export const generateMockup = async (
   return generatedImages;
 };
 
-// Helper to get API key from environment or AI Studio
+// Helper to get API key from environment, AI Studio, or localStorage
 const getApiKey = (): string | null => {
   // First check environment variable (for Vercel/standalone deployment)
-  const envKey = (process.env.API_KEY || process.env.GEMINI_API_KEY) as string | undefined;
-  if (envKey) {
-    return envKey;
-  }
+  const envKey = getEnvApiKey();
+  if (envKey) return envKey;
   
   // Fallback to AI Studio if available
   const win = window as any;
   if (win.aistudio && win.aistudio.getApiKey) {
-    return win.aistudio.getApiKey();
+    const studioKey = normalizeApiKey(win.aistudio.getApiKey());
+    if (studioKey) return studioKey;
+  }
+  
+  // Final fallback to localStorage (user-entered key)
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const storedKey = normalizeApiKey(localStorage.getItem('gemini_api_key'));
+    if (storedKey) return storedKey;
   }
   
   return null;
@@ -289,17 +308,40 @@ const getApiKey = (): string | null => {
 
 export const checkApiKey = async (): Promise<boolean> => {
   // Check environment variable first
-  const envKey = (process.env.API_KEY || process.env.GEMINI_API_KEY) as string | undefined;
-  if (envKey) {
-    return true;
-  }
+  const envKey = getEnvApiKey();
+  if (envKey) return true;
   
   // Fallback to AI Studio
   const win = window as any;
   if (win.aistudio && win.aistudio.hasSelectedApiKey) {
-    return await win.aistudio.hasSelectedApiKey();
+    const hasStudioKey = await win.aistudio.hasSelectedApiKey();
+    if (hasStudioKey) return true;
   }
+  
+  // Final fallback to localStorage
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const storedKey = normalizeApiKey(localStorage.getItem('gemini_api_key'));
+    if (storedKey) return true;
+  }
+  
   return false;
+};
+
+export const setApiKey = (key: string): void => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const normalized = normalizeApiKey(key);
+    if (normalized) {
+      localStorage.setItem('gemini_api_key', normalized);
+    } else {
+      localStorage.removeItem('gemini_api_key');
+    }
+  }
+};
+
+export const clearApiKey = (): void => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.removeItem('gemini_api_key');
+  }
 };
 
 export const promptForApiKey = async (): Promise<void> => {
