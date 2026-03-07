@@ -147,3 +147,7 @@ If you encounter issues:
 2. Verify environment variables are set correctly
 3. Test locally with `npm run build` to catch build errors early
 
+
+
+
+

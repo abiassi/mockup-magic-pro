@@ -3,7 +3,7 @@ import { GenerationSettings, AnalysisVibe, CameraAngle, ContactSheetGrid, LensSp
 
 // The model requested is "nano banana 2", which maps to 'gemini-3.1-flash-image-preview'
 const MODEL_NAME = 'gemini-3.1-flash-image-preview';
-const ANALYSIS_MODEL = 'gemini-3.1-flash-lite'; // Fast, cheap model for analyzing the image
+const ANALYSIS_MODEL = 'gemini-3.1-flash-preview'; // Fast model for analyzing the image
 
 // Basic helper to sanitize API keys and ignore placeholders
 export const normalizeApiKey = (key?: string | null): string | null => {
