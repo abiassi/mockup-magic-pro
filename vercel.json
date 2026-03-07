@@ -1,14 +1,12 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "devCommand": "npm run dev",
+  "devCommand": "vite --port $PORT",
   "installCommand": "npm install",
   "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "functions": {
+    "api/upscale.ts": { "maxDuration": 60 },
+    "api/mcp.ts": { "maxDuration": 60 }
+  }
 }
 
