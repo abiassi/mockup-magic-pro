@@ -318,16 +318,21 @@ async function writeWebResponse(webRes: Response, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const apiKey = req.headers['x-api-key'];
-  if (!apiKey || apiKey !== process.env.MCP_API_KEY) {
-    return res.status(401).json({ error: 'Unauthorized: invalid or missing X-API-Key' });
+  try {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey || apiKey !== process.env.MCP_API_KEY) {
+      return res.status(401).json({ error: 'Unauthorized: invalid or missing X-API-Key' });
+    }
+
+    const mcp = createServer();
+    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await mcp.connect(transport);
+
+    const webReq = toWebRequest(req);
+    const webRes = await transport.handleRequest(webReq);
+    await writeWebResponse(webRes, res);
+  } catch (err: any) {
+    console.error('MCP handler error:', err);
+    res.status(500).json({ error: err.message, stack: err.stack, code: err.code });
   }
-
-  const mcp = createServer();
-  const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await mcp.connect(transport);
-
-  const webReq = toWebRequest(req);
-  const webRes = await transport.handleRequest(webReq);
-  await writeWebResponse(webRes, res);
 }
