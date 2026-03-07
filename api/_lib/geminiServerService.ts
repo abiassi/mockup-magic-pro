@@ -1,12 +1,60 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { GenerationSettings, AnalysisVibe, ShotContext } from "../../types";
-import {
-  getLensSpecsForContext,
-  getEnvironmentalDetails,
-  getPhysicalInteractionDetails,
-  getAtmosphericAndCameraBehavior,
-  getContextualNegativePrompts,
-} from "../../services/geminiService";
+import type { GenerationSettings, AnalysisVibe, ShotContext, LensSpec, EnvironmentalDetails } from "../../types";
+
+// Inline pure helpers from geminiService to avoid importing browser-dependent module
+
+const getLensSpecsForContext = (context: ShotContext): LensSpec => {
+  const { cameraAngle, isMacro } = context;
+  if (isMacro || cameraAngle === "Extreme Macro") {
+    return { focalLength: "100mm macro lens", aperture: "f/2.8", distanceFromSubject: "6-12 inches from subject", depthOfField: "razor-thin, background melted into creamy bokeh", lensCharacteristics: "1:1 magnification, exceptional sharpness on focused plane, extreme subject isolation", perspective: "compressed, macro perspective with no room context" };
+  }
+  return { focalLength: "50mm standard lens", aperture: "f/4", distanceFromSubject: "5-7 feet from artwork", depthOfField: "medium depth, artwork in focus with environment contextually readable", lensCharacteristics: "natural perspective, slight vignetting in corners, organic lens falloff", perspective: "natural, editorial perspective" };
+};
+
+const getEnvironmentalDetails = (vibe: AnalysisVibe): EnvironmentalDetails => {
+  const details: Record<AnalysisVibe, EnvironmentalDetails> = {
+    "Industrial & Raw": { imperfections: ["fine concrete dust on horizontal surfaces", "minor scuffs and wear marks on walls", "exposed nail holes and patch repairs"], atmospheric: ["dust motes floating in harsh light beams", "slight haze from ventilation systems", "hard shadows with crisp edges"], sceneDressing: ["exposed conduit or pipes in background", "stacked materials or equipment (out of focus)", "industrial lighting fixtures with visible wiring"], realismLevel: "worn", ambientDetails: "Industrial space with authentic wear patterns, hard architectural shadows, visible construction details, and raw material textures." },
+    "Modern & Minimalist": { imperfections: ["extremely subtle finger smudges on glass surfaces", "faint shoe scuff marks on pristine floors", "microscopic dust particles visible in spotlight beams"], atmospheric: ["soft diffused daylight with gentle gradients", "minimal haze creating atmospheric depth", "subtle light bounce from white surfaces"], sceneDressing: ["single architectural plant partially visible", "minimal furniture edge in background", "polished concrete or light wood floor"], realismLevel: "pristine", ambientDetails: "Gallery-quality minimalist space with museum-level cleanliness but authentic material textures." },
+    "Cozy & Bohemian": { imperfections: ["gentle dust accumulation on plant leaves", "minor coffee ring stains on nearby surfaces", "worn book spines with creased covers"], atmospheric: ["warm diffused light through curtains or foliage", "soft shadows with gentle gradients", "layered lighting from multiple warm sources"], sceneDressing: ["trailing pothos or ivy plants", "stacked vintage books", "macramé or woven textile details"], realismLevel: "lived-in", ambientDetails: "Warm, inhabited space with gentle lived-in quality. Natural clutter, layered textures, soft diffused lighting." },
+    "Luxury & High-end": { imperfections: ["faint reflections revealing room depth in polished surfaces", "micro-scratches on metal fixtures", "subtle marble veining variations"], atmospheric: ["controlled dramatic lighting with gradients", "subtle rim lighting on edges", "atmospheric depth with layered shadows"], sceneDressing: ["designer furniture edge", "dark wood paneling or rich textured wallcovering", "brass or bronze fixtures with gentle patina"], realismLevel: "pristine", ambientDetails: "High-end architectural space with expensive materials showing authentic luxury." },
+    "Public & Street": { imperfections: ["layered poster remnants and wheat paste residue", "graffiti tags and marker scribbles", "chipped paint revealing multiple underlayers"], atmospheric: ["harsh fluorescent light with green-blue cast", "mixed color temperature", "strong directional shadows"], sceneDressing: ["utility boxes, meters, or transit signage", "chain-link fence or metal grating in background", "weathered wood or corrugated metal surfaces"], realismLevel: "gritty", ambientDetails: "Authentic urban public space with genuine street wear, layered history of use." },
+    "Surprise Me": { imperfections: ["environment-appropriate wear patterns", "authentic material aging", "subtle surface imperfections"], atmospheric: ["natural or artificial light appropriate to scene", "atmospheric depth elements", "shadow complexity matching light source"], sceneDressing: ["contextually appropriate background elements", "environment-specific materials", "authentic spatial depth cues"], realismLevel: "lived-in", ambientDetails: "Varied environment with authentic material qualities, appropriate wear level, and natural atmospheric effects." }
+  };
+  return details[vibe];
+};
+
+const getPhysicalInteractionDetails = (frameStyle: string, lighting: string): string => {
+  let frameInteraction = frameStyle === "None"
+    ? "UNFRAMED PRINT PHYSICS: Paper directly on wall, taped or pinned at corners. Slight paper curl at edges. Soft contact shadow around perimeter. Paper texture visible at edges. PRINT MATERIAL: Semi-matte fine art paper with subtle tooth/texture."
+    : "FRAMED PHYSICS: Frame appropriate to scene with authentic depth (1-3 inches). Glass shows environmental reflections (20-30% opacity). Frame shadow on wall matches light direction. Glass surface has realistic imperfections. PRINT MATERIAL: Semi-matte fine art paper with subtle surface texture behind glass.";
+  let lightInteraction = lighting === "Natural Daylight" ? "Natural daylight, 5500-6500K, directional shadows with soft penumbra." : lighting === "Golden Hour" ? "Golden hour, 3000-3800K, long dramatic shadows, strong directional warm light." : lighting === "Studio Lighting" ? "Studio lighting, 5000-5500K, multiple controlled sources, even falloff." : lighting === "Moody Dim" ? "Moody dim, 2700-3200K, high contrast, deep shadows." : "Scene-appropriate natural lighting.";
+  return frameInteraction + "\n" + lightInteraction;
+};
+
+const getAtmosphericAndCameraBehavior = (shotContext: ShotContext): string => {
+  const { isMacro } = shotContext;
+  const depthCues = isMacro
+    ? "MACRO: Background completely out of focus, no spatial context."
+    : "ATMOSPHERIC DEPTH: Aerial perspective, contrast reduction with distance, overlapping planes.";
+  const cameraBehavior = isMacro
+    ? "HANDHELD CLOSE-UP: Slight organic imperfection, micro-motion blur on edges, shallow focus plane."
+    : "TRIPOD/STABILIZED: Precise framing, even sharpness, subtle lens vignetting, film grain (Kodak Portra 400).";
+  return depthCues + "\n" + cameraBehavior;
+};
+
+const getContextualNegativePrompts = (context: ShotContext, vibe: AnalysisVibe): string[] => {
+  const base = ["3d render", "cgi", "digital art", "photoshop composite", "artificial", "plastic appearance", "perfectly clean", "pristine showroom", "oversaturated colors", "blurry", "out of focus", "people", "animals", "faces", "text", "watermarks"];
+  if (context.isMacro) return [...base, "wide shot", "full room view", "distant camera", "flat lighting"];
+  const vibeNeg: Record<AnalysisVibe, string[]> = {
+    "Industrial & Raw": ["pristine clean walls", "polished surfaces", "luxury materials"],
+    "Modern & Minimalist": ["clutter", "ornate decoration", "busy composition"],
+    "Cozy & Bohemian": ["stark white walls", "harsh industrial lighting", "sterile environment"],
+    "Luxury & High-end": ["cheap materials", "plastic furniture", "fluorescent lighting"],
+    "Public & Street": ["pristine gallery walls", "luxury materials", "perfect lighting"],
+    "Surprise Me": ["generic stock photo", "corporate stock imagery"]
+  };
+  return [...base, ...vibeNeg[vibe]];
+};
 
 const MODEL_NAME = 'gemini-3.1-flash-image-preview';
 const ANALYSIS_MODEL = 'gemini-3.1-flash-preview';
