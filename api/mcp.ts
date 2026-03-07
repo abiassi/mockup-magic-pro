@@ -73,9 +73,9 @@ const GENERATION_MODEL = 'gemini-3.1-flash-image-preview';
 const ANALYSIS_MODEL = 'gemini-3.1-flash-preview';
 
 function getGeminiApiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key?.trim()) throw new Error('GEMINI_API_KEY not set');
-  return key.trim();
+  const trimmed = process.env.GEMINI_API_KEY?.trim();
+  if (!trimmed) throw new Error('GEMINI_API_KEY not set');
+  return trimmed;
 }
 
 const stripBase64Header = (b64: string) => b64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
@@ -209,6 +209,11 @@ async function serverAnalyzeArtwork(GoogleGenAI: any, artworkBase64: string, vib
   }
 }
 
+// --- MCP response helpers ---
+
+const mcpJson = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
+const mcpError = (value: unknown) => ({ ...mcpJson(value), isError: true as const });
+
 // --- MCP Server builder ---
 
 function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
@@ -233,13 +238,12 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
     };
     const images = await serverGenerateMockup(GoogleGenAI, args.artwork_base64, settings);
     const sql = getSql();
-    const results: { id: string; imageUrl: string }[] = [];
-    for (const imageUrl of images) {
-      const id = crypto.randomUUID();
-      await sql`INSERT INTO mockup_results (id, image_url, prompt, created_at, aspect_ratio, camera_angle) VALUES (${id}, ${imageUrl}, ${args.prompt}, ${Date.now()}, ${settings.aspectRatio}, ${args.camera_angle ?? null}) ON CONFLICT (id) DO NOTHING`;
-      results.push({ id, imageUrl });
-    }
-    return { content: [{ type: 'text', text: JSON.stringify(results) }] };
+    const createdAt = Date.now();
+    const results = images.map(imageUrl => ({ id: crypto.randomUUID(), imageUrl }));
+    await Promise.all(results.map(({ id, imageUrl }) =>
+      sql`INSERT INTO mockup_results (id, image_url, prompt, created_at, aspect_ratio, camera_angle) VALUES (${id}, ${imageUrl}, ${args.prompt}, ${createdAt}, ${settings.aspectRatio}, ${args.camera_angle ?? null}) ON CONFLICT (id) DO NOTHING`
+    ));
+    return mcpJson(results);
   });
 
   mcp.tool('generate_composite', 'Generate a composite mockup by placing artwork onto a base scene image.', {
@@ -252,7 +256,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
     const sql = getSql();
     const id = crypto.randomUUID();
     await sql`INSERT INTO mockup_results (id, image_url, prompt, created_at, aspect_ratio, variant_type, composite_base_url, composite_artwork_url) VALUES (${id}, ${images[0]}, ${args.instructions}, ${Date.now()}, ${args.aspect_ratio ?? null}, ${'composite'}, ${args.base_image_base64.slice(0, 100)}, ${args.artwork_base64.slice(0, 100)}) ON CONFLICT (id) DO NOTHING`;
-    return { content: [{ type: 'text', text: JSON.stringify({ id, imageUrl: images[0] }) }] };
+    return mcpJson({ id, imageUrl: images[0] });
   });
 
   mcp.tool('analyze_artwork', 'Analyze artwork and return prompt suggestions for mockup generation.', {
@@ -260,7 +264,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
     vibe: z.enum(['Industrial & Raw', 'Modern & Minimalist', 'Cozy & Bohemian', 'Luxury & High-end', 'Public & Street', 'Surprise Me']).optional(),
   }, async (args: any) => {
     const suggestions = await serverAnalyzeArtwork(GoogleGenAI, args.artwork_base64, args.vibe);
-    return { content: [{ type: 'text', text: JSON.stringify(suggestions) }] };
+    return mcpJson(suggestions);
   });
 
   mcp.tool('list_mockups', 'List mockup metadata from the database.', {
@@ -269,7 +273,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
   }, async (args: any) => {
     const sql = getSql();
     const rows = await sql`SELECT id, prompt, created_at AS "createdAt", is_high_res AS "isHighRes", is_contact_sheet AS "isContactSheet", camera_angle AS "cameraAngle", variant_type AS "variantType", aspect_ratio AS "aspectRatio" FROM mockup_results ORDER BY created_at DESC LIMIT ${args.limit ?? 20} OFFSET ${args.offset ?? 0}`;
-    return { content: [{ type: 'text', text: JSON.stringify(rows) }] };
+    return mcpJson(rows);
   });
 
   mcp.tool('get_mockup', 'Get a single mockup by ID with full image URL.', {
@@ -277,8 +281,8 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
   }, async (args: any) => {
     const sql = getSql();
     const rows = await sql`SELECT id, image_url AS "imageUrl", prompt, created_at AS "createdAt", is_high_res AS "isHighRes", is_contact_sheet AS "isContactSheet", extracted_from AS "extractedFrom", camera_angle AS "cameraAngle", variant_type AS "variantType", aspect_ratio AS "aspectRatio", refined_from AS "refinedFrom", composite_base_url AS "compositeBaseUrl", composite_artwork_url AS "compositeArtworkUrl" FROM mockup_results WHERE id = ${args.id}`;
-    if (rows.length === 0) return { content: [{ type: 'text', text: JSON.stringify({ error: 'Not found' }) }], isError: true };
-    return { content: [{ type: 'text', text: JSON.stringify(rows[0]) }] };
+    if (rows.length === 0) return mcpError({ error: 'Not found' });
+    return mcpJson(rows[0]);
   });
 
   mcp.tool('delete_mockup', 'Delete a mockup by ID.', {
@@ -286,7 +290,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
   }, async (args: any) => {
     const sql = getSql();
     await sql`DELETE FROM mockup_results WHERE id = ${args.id}`;
-    return { content: [{ type: 'text', text: JSON.stringify({ success: true, id: args.id }) }] };
+    return mcpJson({ success: true, id: args.id });
   });
 
   mcp.tool('upscale_mockup', 'Upscale a mockup image using AI super-resolution.', {
@@ -294,7 +298,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
     model: z.enum(['real-esrgan', 'clarity']).optional(),
   }, async (args: any) => {
     const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) return { content: [{ type: 'text', text: JSON.stringify({ error: 'REPLICATE_API_TOKEN not configured' }) }], isError: true };
+    if (!token) return mcpError({ error: 'REPLICATE_API_TOKEN not configured' });
     const isClarity = args.model === 'clarity';
     const endpoint = isClarity
       ? 'https://api.replicate.com/v1/models/philz1337x/clarity-upscaler/predictions'
@@ -304,21 +308,16 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
       : { image: args.image_base64, scale: 4, face_enhance: false };
     const createRes = await fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait=55' }, body: JSON.stringify({ input }) });
     const prediction = await createRes.json();
-    if (!createRes.ok) return { content: [{ type: 'text', text: JSON.stringify({ error: prediction.detail || 'Replicate error' }) }], isError: true };
+    if (!createRes.ok) return mcpError({ error: prediction.detail || 'Replicate error' });
     let result = prediction;
     for (let i = 0; i < 15 && result.status !== 'succeeded' && result.status !== 'failed'; i++) {
       await new Promise(r => setTimeout(r, 2000));
       const poll = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, { headers: { Authorization: `Bearer ${token}` } });
       result = await poll.json();
     }
-    if (result.status !== 'succeeded') return { content: [{ type: 'text', text: JSON.stringify({ error: result.error || 'Upscale timed out' }) }], isError: true };
+    if (result.status !== 'succeeded') return mcpError({ error: result.error || 'Upscale timed out' });
     const outputUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-    const imgRes = await fetch(outputUrl);
-    if (!imgRes.ok) return { content: [{ type: 'text', text: JSON.stringify({ error: 'Failed to download upscaled image' }) }], isError: true };
-    const buffer = await imgRes.arrayBuffer();
-    const ct = imgRes.headers.get('content-type') || 'image/png';
-    const b64 = Buffer.from(buffer).toString('base64');
-    return { content: [{ type: 'text', text: JSON.stringify({ upscaledUrl: `data:${ct};base64,${b64}` }) }] };
+    return mcpJson({ upscaledUrl: outputUrl });
   });
 
   return mcp;
