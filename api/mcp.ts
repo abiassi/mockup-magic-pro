@@ -1,37 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Dynamic imports to catch module resolution errors at runtime
-let McpServer: any;
-let StreamableHTTPServerTransport: any;
-let z: any;
-let neon: any;
-let serverGenerateMockup: any;
-let serverGenerateComposite: any;
-let serverAnalyzeArtwork: any;
-
-let initError: string | null = null;
-
-async function initDeps() {
-  if (McpServer) return; // already loaded
-  try {
-    const mcpMod = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    McpServer = mcpMod.McpServer;
-    const transportMod = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
-    StreamableHTTPServerTransport = transportMod.StreamableHTTPServerTransport;
-    const zodMod = await import('zod');
-    z = zodMod.z;
-    const neonMod = await import('@neondatabase/serverless');
-    neon = neonMod.neon;
-    const geminiMod = await import('../services/geminiServerService');
-    serverGenerateMockup = geminiMod.serverGenerateMockup;
-    serverGenerateComposite = geminiMod.serverGenerateComposite;
-    serverAnalyzeArtwork = geminiMod.serverAnalyzeArtwork;
-  } catch (e: any) {
-    initError = e.stack || e.message || String(e);
-    throw e;
-  }
-}
-
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
+import { neon } from '@neondatabase/serverless';
+import {
+  serverGenerateMockup,
+  serverGenerateComposite,
+  serverAnalyzeArtwork,
+} from './geminiServerService';
 import type { GenerationSettings, AnalysisVibe } from '../types';
 
 export const config = {
@@ -311,13 +287,6 @@ function createServer(): McpServer {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Initialize dependencies (catches module resolution errors)
-  try {
-    await initDeps();
-  } catch {
-    return res.status(500).json({ error: 'Module init failed', details: initError });
-  }
-
   // Auth: check X-API-Key header
   const apiKey = req.headers['x-api-key'];
   if (!apiKey || apiKey !== process.env.MCP_API_KEY) {
