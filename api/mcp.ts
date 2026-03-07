@@ -7,7 +7,7 @@ import {
   serverGenerateMockup,
   serverGenerateComposite,
   serverAnalyzeArtwork,
-} from './geminiServerService';
+} from './_lib/geminiServerService';
 import type { GenerationSettings, AnalysisVibe } from '../types';
 
 export const config = {

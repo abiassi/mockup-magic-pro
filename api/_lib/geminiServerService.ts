@@ -1,12 +1,12 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { GenerationSettings, AnalysisVibe, ShotContext } from "../types";
+import { GenerationSettings, AnalysisVibe, ShotContext } from "../../types";
 import {
   getLensSpecsForContext,
   getEnvironmentalDetails,
   getPhysicalInteractionDetails,
   getAtmosphericAndCameraBehavior,
   getContextualNegativePrompts,
-} from "../services/geminiService";
+} from "../../services/geminiService";
 
 const MODEL_NAME = 'gemini-3.1-flash-image-preview';
 const ANALYSIS_MODEL = 'gemini-3.1-flash-preview';
