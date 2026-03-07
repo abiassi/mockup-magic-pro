@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { neon } from '@neondatabase/serverless';
 import {
@@ -286,15 +286,48 @@ function createServer(): McpServer {
   return mcp;
 }
 
+// Convert Node.js IncomingMessage to Web Standard Request
+function toWebRequest(req: VercelRequest): Request {
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  const url = `${protocol}://${host}${req.url}`;
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+  }
+  const init: RequestInit = { method: req.method!, headers };
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    init.body = JSON.stringify(req.body);
+  }
+  return new Request(url, init);
+}
+
+// Write Web Standard Response back to Node.js ServerResponse
+async function writeWebResponse(webRes: Response, res: VercelResponse) {
+  res.status(webRes.status);
+  webRes.headers.forEach((value, key) => res.setHeader(key, value));
+  if (!webRes.body) { res.end(); return; }
+  const reader = webRes.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+  } finally { res.end(); }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Auth: check X-API-Key header
   const apiKey = req.headers['x-api-key'];
   if (!apiKey || apiKey !== process.env.MCP_API_KEY) {
     return res.status(401).json({ error: 'Unauthorized: invalid or missing X-API-Key' });
   }
 
   const mcp = createServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await mcp.connect(transport);
-  await transport.handleRequest(req as any, res as any, req.body);
+
+  const webReq = toWebRequest(req);
+  const webRes = await transport.handleRequest(webReq);
+  await writeWebResponse(webRes, res);
 }
