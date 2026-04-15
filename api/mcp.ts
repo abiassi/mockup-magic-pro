@@ -305,7 +305,7 @@ function buildServer(McpServer: any, z: any, neon: any, GoogleGenAI: any) {
       : 'https://api.replicate.com/v1/models/nightmareai/real-esrgan/predictions';
     const input = isClarity
       ? { image: args.image_base64, scale_factor: 2, creativity: 0.15, resemblance: 0.9, prompt: 'high resolution, sharp details', negative_prompt: 'blurry, artifacts, noise' }
-      : { image: args.image_base64, scale: 4, face_enhance: false };
+      : { image: args.image_base64, scale: 2, face_enhance: false };
     const createRes = await fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait=55' }, body: JSON.stringify({ input }) });
     const prediction = await createRes.json();
     if (!createRes.ok) return mcpError({ error: prediction.detail || 'Replicate error' });

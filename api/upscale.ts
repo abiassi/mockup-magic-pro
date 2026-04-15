@@ -35,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? { image: imageUrl, scale_factor: 2, creativity: 0.15, resemblance: 0.9,
         prompt: 'high resolution, sharp details, professional photography',
         negative_prompt: 'blurry, artifacts, noise' }
-    : { image: imageUrl, scale: 4, face_enhance: false };
+    : { image: imageUrl, scale: 2, face_enhance: false };
 
   const createRes = await fetch(endpoint, {
     method: 'POST',
