@@ -702,7 +702,19 @@ const App: React.FC = () => {
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Upscale failed');
-      const { upscaledUrl } = await res.json();
+      const { upscaledUrl: replicateUrl } = await res.json();
+      // Download the Replicate URL in the browser and convert to a persistent data URL.
+      // The API returns the URL directly (avoids 80MB+ in lambda memory); Replicate URLs
+      // expire in ~1h so we must bake into a data URL before saving.
+      const imgRes = await fetch(replicateUrl);
+      if (!imgRes.ok) throw new Error('Failed to download upscaled image');
+      const blob = await imgRes.blob();
+      const upscaledUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
       const newResult: MockupResult = {
         id: crypto.randomUUID(),
         imageUrl: upscaledUrl,

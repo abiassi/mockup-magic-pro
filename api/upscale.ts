@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '15mb' } },
-  maxDuration: 60,
+  maxDuration: 300,
 };
 
 async function verifyToken(req: VercelRequest): Promise<boolean> {
@@ -51,8 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!createRes.ok) return res.status(500).json({ error: prediction.detail || 'Replicate error' });
 
   let result = prediction;
-  for (let i = 0; i < 15 && result.status !== 'succeeded' && result.status !== 'failed'; i++) {
-    await new Promise(r => setTimeout(r, 2000));
+  // Poll up to ~220s (55s Prefer wait + 60×3s) — stays within maxDuration: 300
+  for (let i = 0; i < 60 && result.status !== 'succeeded' && result.status !== 'failed'; i++) {
+    await new Promise(r => setTimeout(r, 3000));
     const poll = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -65,13 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const outputUrl = Array.isArray(result.output) ? result.output[0] : result.output;
 
-  // Download and base64-encode so the image is stored permanently (Replicate URLs expire ~1h)
-  const imgRes = await fetch(outputUrl);
-  if (!imgRes.ok) return res.status(500).json({ error: 'Failed to download upscaled image' });
-  const buffer = await imgRes.arrayBuffer();
-  const contentType = imgRes.headers.get('content-type') || 'image/png';
-  const base64 = Buffer.from(buffer).toString('base64');
-  const upscaledUrl = `data:${contentType};base64,${base64}`;
-
-  return res.status(200).json({ upscaledUrl });
+  // Return the Replicate URL directly — the client downloads and converts to a
+  // persistent data URL in the browser. Avoids loading 80MB+ images into lambda memory.
+  return res.status(200).json({ upscaledUrl: outputUrl });
 }
