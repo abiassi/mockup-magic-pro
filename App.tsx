@@ -17,7 +17,6 @@ import {
   XMarkIcon,
   ArrowsPointingOutIcon,
   ArrowDownTrayIcon,
-  BoltIcon,
   PlayCircleIcon,
   PencilSquareIcon,
   SwatchIcon,
@@ -1721,7 +1720,7 @@ const App: React.FC = () => {
 
             <SingleSelectPills
               label="Upscale Model"
-              icon={BoltIcon}
+              icon={SparklesIcon}
               options={['Real-ESRGAN', 'Clarity AI']}
               selected={upscaleModel}
               onChange={setUpscaleModel}
@@ -1897,10 +1896,10 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                      {/* Upgrade button - different handlers for contact sheets vs regular mockups */}
                      {!result.isHighRes && result.isContactSheet && (
-                       <button onClick={(e) => { e.stopPropagation(); handleUpscaleContactSheet(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upgrade Contact Sheet to 4K"><BoltIcon className="w-5 h-5" /></button>
+                       <button onClick={(e) => { e.stopPropagation(); handleUpscaleContactSheet(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upgrade Contact Sheet to 4K"><SparklesIcon className="w-5 h-5" /></button>
                      )}
                      {!result.isHighRes && !result.isContactSheet && !result.extractedFrom && (
-                       <button onClick={(e) => { e.stopPropagation(); handleUpscale(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upscale to 4K"><BoltIcon className="w-5 h-5" /></button>
+                       <button onClick={(e) => { e.stopPropagation(); handleUpscale(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upscale to 4K"><SparklesIcon className="w-5 h-5" /></button>
                      )}
                      <button onClick={(e) => { e.stopPropagation(); downloadImage(result.imageUrl, result.id); }} className="bg-white text-black p-2 rounded-full shadow-lg hover:bg-gray-200" title="Download"><ArrowDownTrayIcon className="w-5 h-5" /></button>
                      <button onClick={(e) => { e.stopPropagation(); deleteResult(result.id); }} className="bg-red-600 text-white p-2 rounded-full shadow-lg hover:bg-red-500" title="Delete"><TrashIcon className="w-5 h-5" /></button>
@@ -2297,7 +2296,7 @@ const App: React.FC = () => {
                           className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg"
                           title="Upscale to 4K"
                         >
-                          <BoltIcon className="w-5 h-5" />
+                          <SparklesIcon className="w-5 h-5" />
                         </button>
                       )}
                       <button onClick={(e) => { e.stopPropagation(); downloadImage(result.imageUrl, result.id); }} className="bg-white text-black p-2 rounded-full shadow-lg hover:bg-gray-200" title="Download"><ArrowDownTrayIcon className="w-5 h-5" /></button>
