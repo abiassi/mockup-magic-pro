@@ -24,6 +24,7 @@ export interface MockupResult {
   prompt: string;
   createdAt: number;
   isHighRes?: boolean;
+  upscaleSize?: '2K' | '4K';
   isContactSheet?: boolean;
   extractedFrom?: string;
   cameraAngle?: CameraAngle;

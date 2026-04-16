@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { checkApiKey, promptForApiKey, setApiKey, generateMockup, analyzeImageForPrompts, regenerateSinglePrompt, getEnvApiKey, normalizeApiKey, generateComposite, refineComposite } from './services/geminiService';
+import { checkApiKey, promptForApiKey, setApiKey, generateMockup, analyzeImageForPrompts, regenerateSinglePrompt, getEnvApiKey, normalizeApiKey, generateComposite, refineComposite, upscaleMockupWithGemini } from './services/geminiService';
 import { storageService } from './services/storageService';
 import { cloudStorageService } from './services/cloudStorageService';
 import { GenerationSettings, MockupResult, FrameStyle, LightingStyle, WallTexture, PrintSize, AnalysisVibe, CameraAngle, GenerationMode, ContactSheetGrid, ArtworkLibraryItem, SourcePhotoLibraryItem } from './types';
@@ -242,7 +242,7 @@ const App: React.FC = () => {
   });
 
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [upscaleModel, setUpscaleModel] = useState<'Real-ESRGAN' | 'Clarity AI'>('Real-ESRGAN');
+  const [upscaleSize, setUpscaleSize] = useState<'2K' | '4K'>('2K');
   const [upscalingId, setUpscalingId] = useState<string | null>(null);
   const [generatingContactSheetId, setGeneratingContactSheetId] = useState<string | null>(null);
   const [results, setResults] = useState<MockupResult[]>([]);
@@ -688,38 +688,19 @@ const App: React.FC = () => {
   const handleUpscale = async (result: MockupResult) => {
     setUpscalingId(result.id);
     try {
-      const token = localStorage.getItem('site_token');
-      const res = await fetch('/api/upscale', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          imageUrl: result.imageUrl,
-          model: upscaleModel === 'Clarity AI' ? 'clarity' : 'real-esrgan',
-        }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Upscale failed');
-      const { upscaledUrl: replicateUrl } = await res.json();
-      // Download the Replicate URL in the browser and convert to a persistent data URL.
-      // The API returns the URL directly (avoids 80MB+ in lambda memory); Replicate URLs
-      // expire in ~1h so we must bake into a data URL before saving.
-      const imgRes = await fetch(replicateUrl);
-      if (!imgRes.ok) throw new Error('Failed to download upscaled image');
-      const blob = await imgRes.blob();
-      const upscaledUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      const upscaledUrl = await upscaleMockupWithGemini(
+        result.imageUrl,
+        result.prompt,
+        upscaleSize,
+        result.aspectRatio || settings.aspectRatio
+      );
       const newResult: MockupResult = {
         id: crypto.randomUUID(),
         imageUrl: upscaledUrl,
         prompt: result.prompt,
         createdAt: Date.now(),
         isHighRes: true,
+        upscaleSize,
         variantType: result.variantType || 'standard',
         aspectRatio: result.aspectRatio || settings.aspectRatio,
       };
@@ -1718,13 +1699,30 @@ const App: React.FC = () => {
 
             <div className="h-px bg-gray-700/50 my-3"></div>
 
-            <SingleSelectPills
-              label="Upscale Model"
-              icon={SparklesIcon}
-              options={['Real-ESRGAN', 'Clarity AI']}
-              selected={upscaleModel}
-              onChange={setUpscaleModel}
-            />
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 mb-2 flex items-center gap-1 uppercase tracking-wide">
+                <SparklesIcon className="w-3 h-3" /> Upscale Quality
+              </label>
+              <div className="flex gap-1.5">
+                {([
+                  { size: '2K', price: '$0.10', label: '2K' },
+                  { size: '4K', price: '$0.15', label: '4K' },
+                ] as const).map(({ size, price, label }) => (
+                  <button
+                    key={size}
+                    onClick={() => setUpscaleSize(size)}
+                    className={`flex flex-col items-center px-3 py-1.5 rounded-full border transition-all text-[10px] font-medium
+                      ${upscaleSize === size
+                        ? 'bg-yellow-500 border-yellow-500 text-black shadow-md'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
+                      }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`text-[9px] ${upscaleSize === size ? 'text-black/60' : 'text-gray-600'}`}>{price}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1874,7 +1872,7 @@ const App: React.FC = () => {
                   {/* Status Badges */}
                   <div className="absolute top-2 left-2 flex flex-col gap-1">
                     <span className="px-1.5 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-bold border border-white/10 uppercase">
-                      {result.isHighRes ? '2K Final' : '1K Draft'}
+                      {result.isHighRes ? `${result.upscaleSize ?? '2K'} Final` : '1K Draft'}
                     </span>
                     {result.variantType === "macro" && (
                       <span className="px-1.5 py-0.5 bg-amber-400/90 text-black rounded text-[9px] font-bold border border-amber-200/60 uppercase">
@@ -2279,7 +2277,7 @@ const App: React.FC = () => {
                           ? 'bg-yellow-500/90 text-black border-yellow-300/60'
                           : 'bg-black/60 text-white border-white/10'
                       }`}>
-                        {result.isHighRes ? '2K Final' : '1K Draft'}
+                        {result.isHighRes ? `${result.upscaleSize ?? '2K'} Final` : '1K Draft'}
                       </span>
                       {result.refinedFrom && (
                         <span className="px-1.5 py-0.5 bg-purple-600/90 backdrop-blur rounded text-[9px] font-bold border border-purple-400/30 uppercase">

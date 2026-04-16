@@ -1624,3 +1624,51 @@ export const promptForApiKey = async (): Promise<void> => {
     alert("Please set GEMINI_API_KEY environment variable. For local development, create a .env.local file with: GEMINI_API_KEY=your_key_here");
   }
 };
+
+/**
+ * Re-generate a mockup at higher resolution using Gemini.
+ * Passes the existing 1K mockup as a reference so composition is preserved.
+ */
+export const upscaleMockupWithGemini = async (
+  mockupDataUrl: string,
+  prompt: string,
+  targetSize: '2K' | '4K',
+  aspectRatio: string
+): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('Gemini API key not found');
+
+  const ai = new GoogleGenAI({ apiKey });
+  const base64 = stripBase64Header(mockupDataUrl);
+
+  const response = await retry<GenerateContentResponse>(() =>
+    ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          {
+            inlineData: { mimeType: 'image/jpeg', data: base64 },
+          },
+          {
+            text: `Regenerate this artwork mockup at higher resolution.
+Preserve the exact composition, framing, lighting, color grading, and film grain aesthetic.
+Enhance fine details — paper texture, frame material, glass reflections, wall surface.
+${prompt}
+
+Output at maximum sharpness and detail. Award-winning editorial photography quality.`,
+          },
+        ],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: aspectRatio as any,
+          imageSize: targetSize as any,
+        },
+      },
+    })
+  );
+
+  const imageUrl = extractImageFromResponse(response);
+  if (!imageUrl) throw new Error('No image returned from Gemini');
+  return imageUrl;
+};
