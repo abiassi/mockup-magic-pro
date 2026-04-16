@@ -242,7 +242,6 @@ const App: React.FC = () => {
   });
 
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [upscaleSize, setUpscaleSize] = useState<'2K' | '4K'>('2K');
   const [upscalingId, setUpscalingId] = useState<string | null>(null);
   const [upscalePopoverId, setUpscalePopoverId] = useState<string | null>(null);
   const [generatingContactSheetId, setGeneratingContactSheetId] = useState<string | null>(null);
@@ -306,6 +305,16 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('mockupSettings', JSON.stringify(settings));
   }, [settings]);
+
+  // Close upscale popover when clicking outside
+  useEffect(() => {
+    if (!upscalePopoverId) return;
+    const handler = (e: MouseEvent) => {
+      setUpscalePopoverId(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [upscalePopoverId]);
 
   // Auto-save results to IndexedDB whenever they change
   useEffect(() => {
@@ -1873,7 +1882,7 @@ const App: React.FC = () => {
                        <button onClick={(e) => { e.stopPropagation(); handleUpscaleContactSheet(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upgrade Contact Sheet to 4K"><SparklesIcon className="w-5 h-5" /></button>
                      )}
                      {!result.isHighRes && !result.isContactSheet && !result.extractedFrom && (
-                       <div className="relative" onClick={e => e.stopPropagation()}>
+                       <div className="relative" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                          <button
                            onClick={() => setUpscalePopoverId(upscalePopoverId === result.id ? null : result.id)}
                            className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg"
@@ -1926,7 +1935,7 @@ const App: React.FC = () => {
                   {upscalingId === result.id && (
                     <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10">
                        <ArrowPathIcon className="w-8 h-8 text-yellow-500 animate-spin" />
-                       <span className="text-[10px] font-bold text-yellow-500 mt-2 tracking-widest">UPSCALING...</span>
+                       <span className="text-[10px] font-bold text-yellow-500 mt-2 tracking-widest">ENHANCING...</span>
                     </div>
                   )}
                 </div>
@@ -1934,7 +1943,7 @@ const App: React.FC = () => {
                   <p className="text-[10px] text-gray-400 line-clamp-2 mb-2">{result.prompt}</p>
                   <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase font-mono">
                     <span>{(() => { const d = new Date(Number(result.createdAt)); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}</span>
-                    <span>Gemini Pro</span>
+                    <span>Gemini Flash</span>
                   </div>
                 </div>
               </div>
@@ -2303,7 +2312,7 @@ const App: React.FC = () => {
                     {upscalingId === result.id && (
                       <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10">
                         <ArrowPathIcon className="w-8 h-8 text-yellow-500 animate-spin" />
-                        <span className="text-[10px] font-bold text-yellow-500 mt-2 tracking-widest">UPSCALING...</span>
+                        <span className="text-[10px] font-bold text-yellow-500 mt-2 tracking-widest">ENHANCING...</span>
                       </div>
                     )}
                     {/* Refining overlay */}
@@ -2318,7 +2327,7 @@ const App: React.FC = () => {
                     <p className="text-[10px] text-gray-400 line-clamp-2 mb-2">{result.prompt}</p>
                     <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase font-mono mb-2">
                       <span>{(() => { const d = new Date(Number(result.createdAt)); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}</span>
-                      <span>Gemini Pro</span>
+                      <span>Gemini Flash</span>
                     </div>
                     {/* Refine toggle */}
                     {result.compositeArtworkUrl && (
