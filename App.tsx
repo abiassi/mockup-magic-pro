@@ -1875,7 +1875,7 @@ const App: React.FC = () => {
                   {/* Status Badges */}
                   <div className="absolute top-2 left-2 flex flex-col gap-1">
                     <span className="px-1.5 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-bold border border-white/10 uppercase">
-                      {result.isHighRes ? '4K Final' : '1K Draft'}
+                      {result.isHighRes ? '2K Final' : '1K Draft'}
                     </span>
                     {result.variantType === "macro" && (
                       <span className="px-1.5 py-0.5 bg-amber-400/90 text-black rounded text-[9px] font-bold border border-amber-200/60 uppercase">
@@ -2280,7 +2280,7 @@ const App: React.FC = () => {
                           ? 'bg-yellow-500/90 text-black border-yellow-300/60'
                           : 'bg-black/60 text-white border-white/10'
                       }`}>
-                        {result.isHighRes ? '4K Final' : '1K Draft'}
+                        {result.isHighRes ? '2K Final' : '1K Draft'}
                       </span>
                       {result.refinedFrom && (
                         <span className="px-1.5 py-0.5 bg-purple-600/90 backdrop-blur rounded text-[9px] font-bold border border-purple-400/30 uppercase">
