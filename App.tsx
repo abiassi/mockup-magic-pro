@@ -244,6 +244,7 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [upscaleSize, setUpscaleSize] = useState<'2K' | '4K'>('2K');
   const [upscalingId, setUpscalingId] = useState<string | null>(null);
+  const [upscalePopoverId, setUpscalePopoverId] = useState<string | null>(null);
   const [generatingContactSheetId, setGeneratingContactSheetId] = useState<string | null>(null);
   const [results, setResults] = useState<MockupResult[]>([]);
   const [loadingMessage, setLoadingMessage] = useState<string>("");
@@ -685,13 +686,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpscale = async (result: MockupResult) => {
+  const handleUpscale = async (result: MockupResult, size: '2K' | '4K') => {
+    setUpscalePopoverId(null);
     setUpscalingId(result.id);
     try {
       const upscaledUrl = await upscaleMockupWithGemini(
         result.imageUrl,
         result.prompt,
-        upscaleSize,
+        size,
         result.aspectRatio || settings.aspectRatio
       );
       const newResult: MockupResult = {
@@ -700,7 +702,7 @@ const App: React.FC = () => {
         prompt: result.prompt,
         createdAt: Date.now(),
         isHighRes: true,
-        upscaleSize,
+        upscaleSize: size,
         variantType: result.variantType || 'standard',
         aspectRatio: result.aspectRatio || settings.aspectRatio,
       };
@@ -1697,32 +1699,6 @@ const App: React.FC = () => {
               onChange={setSelectedTextures}
             />
 
-            <div className="h-px bg-gray-700/50 my-3"></div>
-
-            <div className="mb-4">
-              <label className="text-xs text-gray-500 mb-2 flex items-center gap-1 uppercase tracking-wide">
-                <SparklesIcon className="w-3 h-3" /> Upscale Quality
-              </label>
-              <div className="flex gap-1.5">
-                {([
-                  { size: '2K', price: '$0.10', label: '2K' },
-                  { size: '4K', price: '$0.15', label: '4K' },
-                ] as const).map(({ size, price, label }) => (
-                  <button
-                    key={size}
-                    onClick={() => setUpscaleSize(size)}
-                    className={`flex flex-col items-center px-3 py-1.5 rounded-full border transition-all text-[10px] font-medium
-                      ${upscaleSize === size
-                        ? 'bg-yellow-500 border-yellow-500 text-black shadow-md'
-                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
-                      }`}
-                  >
-                    <span>{label}</span>
-                    <span className={`text-[9px] ${upscaleSize === size ? 'text-black/60' : 'text-gray-600'}`}>{price}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1897,7 +1873,30 @@ const App: React.FC = () => {
                        <button onClick={(e) => { e.stopPropagation(); handleUpscaleContactSheet(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upgrade Contact Sheet to 4K"><SparklesIcon className="w-5 h-5" /></button>
                      )}
                      {!result.isHighRes && !result.isContactSheet && !result.extractedFrom && (
-                       <button onClick={(e) => { e.stopPropagation(); handleUpscale(result); }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg" title="Upscale to 4K"><SparklesIcon className="w-5 h-5" /></button>
+                       <div className="relative" onClick={e => e.stopPropagation()}>
+                         <button
+                           onClick={() => setUpscalePopoverId(upscalePopoverId === result.id ? null : result.id)}
+                           className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg"
+                           title="Enhance resolution"
+                         >
+                           <SparklesIcon className="w-5 h-5" />
+                         </button>
+                         {upscalePopoverId === result.id && (
+                           <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 flex flex-col gap-1 min-w-[110px] z-50">
+                             <p className="text-[9px] text-gray-500 uppercase tracking-wide px-1 pb-1 border-b border-gray-700">Enhance to</p>
+                             {([['2K', '~$0.10'], ['4K', '~$0.15']] as const).map(([size, price]) => (
+                               <button
+                                 key={size}
+                                 onClick={() => handleUpscale(result, size)}
+                                 className="flex justify-between items-center px-2.5 py-1.5 rounded-lg hover:bg-indigo-600 text-left transition-colors group"
+                               >
+                                 <span className="text-[11px] font-semibold text-white">{size}</span>
+                                 <span className="text-[10px] text-gray-500 group-hover:text-indigo-200">{price}</span>
+                               </button>
+                             ))}
+                           </div>
+                         )}
+                       </div>
                      )}
                      <button onClick={(e) => { e.stopPropagation(); downloadImage(result.imageUrl, result.id); }} className="bg-white text-black p-2 rounded-full shadow-lg hover:bg-gray-200" title="Download"><ArrowDownTrayIcon className="w-5 h-5" /></button>
                      <button onClick={(e) => { e.stopPropagation(); deleteResult(result.id); }} className="bg-red-600 text-white p-2 rounded-full shadow-lg hover:bg-red-500" title="Delete"><TrashIcon className="w-5 h-5" /></button>
@@ -1934,7 +1933,7 @@ const App: React.FC = () => {
                 <div className="p-3">
                   <p className="text-[10px] text-gray-400 line-clamp-2 mb-2">{result.prompt}</p>
                   <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase font-mono">
-                    <span>{new Date(result.createdAt).toLocaleTimeString()}</span>
+                    <span>{(() => { const d = new Date(Number(result.createdAt)); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}</span>
                     <span>Gemini Pro</span>
                   </div>
                 </div>
@@ -2318,7 +2317,7 @@ const App: React.FC = () => {
                   <div className="p-3">
                     <p className="text-[10px] text-gray-400 line-clamp-2 mb-2">{result.prompt}</p>
                     <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase font-mono mb-2">
-                      <span>{new Date(result.createdAt).toLocaleTimeString()}</span>
+                      <span>{(() => { const d = new Date(Number(result.createdAt)); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(); })()}</span>
                       <span>Gemini Pro</span>
                     </div>
                     {/* Refine toggle */}
