@@ -24,6 +24,9 @@ import {
   CircleStackIcon
 } from '@heroicons/react/24/outline';
 
+// --- Toast ---
+type ToastItem = { id: string; message: string; type: 'success' | 'error' | 'info' };
+
 // --- Helpers ---
 const detectAspectRatio = (width: number, height: number): "1:1" | "3:4" | "4:3" | "16:9" | "9:16" => {
   const ratio = width / height;
@@ -203,6 +206,13 @@ function mergeResults(cloud: MockupResult[], local: MockupResult[]): MockupResul
 const TOKEN_KEY = 'site_token';
 
 const App: React.FC = () => {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toast = useCallback((message: string, type: ToastItem['type'] = 'info') => {
+    const id = crypto.randomUUID();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBootstrappingAuth, setIsBootstrappingAuth] = useState(true);
   const [passwordInput, setPasswordInput] = useState("");
@@ -541,7 +551,7 @@ const App: React.FC = () => {
   const processFile = (file: File) => {
     if (!file) return;
     if (file.type !== 'image/jpeg' && file.type !== 'image/jpg') {
-      alert("Please upload a JPEG image.");
+      toast('Please upload a JPEG image.', 'error');
       return;
     }
     const reader = new FileReader();
@@ -578,7 +588,7 @@ const App: React.FC = () => {
   const processStyleFile = (file: File) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      alert("Please upload an image file (JPEG, PNG, etc.).");
+      toast('Please upload an image file.', 'error');
       return;
     }
     const reader = new FileReader();
@@ -688,7 +698,7 @@ const App: React.FC = () => {
         allResults.forEach(r => cloudStorageService.saveResult(r).catch(e => console.warn('Cloud save failed:', e)));
     } catch (e) {
         console.error(e);
-        alert("Batch generation encountered errors.");
+        toast('Some images failed to generate.', 'error');
     } finally {
         setIsGenerating(false);
         setLoadingMessage("");
@@ -719,15 +729,15 @@ const App: React.FC = () => {
       cloudStorageService.saveResult(newResult).catch(e => console.warn('Cloud save failed:', e));
     } catch (e) {
       console.error(e);
-      alert('Upscale failed.');
+      toast('Enhancement failed. Please try again.', 'error');
     } finally {
       setUpscalingId(null);
     }
   };
 
   const handleUpscaleContactSheet = async (result: MockupResult) => {
-    if (!sourceImage) { alert("Source missing."); return; }
-    if (!result.isContactSheet) { alert("Can only upgrade contact sheets."); return; }
+    if (!sourceImage) { toast('Source image missing.', 'error'); return; }
+    if (!result.isContactSheet) { toast('This only works on contact sheets.', 'error'); return; }
 
     setUpscalingId(result.id);
     setLoadingMessage("Upgrading contact sheet to 4K...");
@@ -799,7 +809,7 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error(e);
-      alert("Contact sheet upgrade failed.");
+      toast('Contact sheet upgrade failed.', 'error');
     } finally {
       setUpscalingId(null);
       setLoadingMessage("");
@@ -846,7 +856,7 @@ const App: React.FC = () => {
 
   const handleGenerateContactSheetFromResult = async (result: MockupResult) => {
     if (!sourceImage) {
-      alert("Source image is missing. Cannot generate contact sheet.");
+      toast('Source image missing.', 'error');
       return;
     }
 
@@ -933,10 +943,10 @@ const App: React.FC = () => {
       extractedResults.forEach(r => cloudStorageService.saveResult(r).catch(e => console.warn('Cloud save failed:', e)));
       setLoadingMessage("");
 
-      alert(`✅ Contact sheet generated! ${extractedFrames.length} frames extracted.`);
+      toast(`Contact sheet ready — ${extractedFrames.length} frames extracted.`, 'success');
     } catch (error) {
       console.error("Contact sheet generation failed:", error);
-      alert(`❌ Error: ${error instanceof Error ? error.message : "Contact sheet generation failed"}`);
+      toast(error instanceof Error ? error.message : "Contact sheet generation failed", 'error');
       setLoadingMessage("");
     } finally {
       setGeneratingContactSheetId(null);
@@ -956,7 +966,7 @@ const App: React.FC = () => {
 
   const handleExportData = async () => {
     if (!storageInitialized) {
-      alert("Storage not initialized");
+      toast('Storage not initialized.', 'error');
       return;
     }
     try {
@@ -970,16 +980,16 @@ const App: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      alert(`Exported ${results.length} results successfully!`);
+      toast(`Exported ${results.length} results.`, 'success');
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Failed to export data');
+      toast('Failed to export data.', 'error');
     }
   };
 
   const handleImportData = () => {
     if (!storageInitialized) {
-      alert("Storage not initialized");
+      toast('Storage not initialized.', 'error');
       return;
     }
     const input = document.createElement('input');
@@ -995,10 +1005,10 @@ const App: React.FC = () => {
         // Reload results from storage
         const savedResults = await storageService.loadAllResults();
         setResults(savedResults);
-        alert(`Successfully imported ${count} results!`);
+        toast(`Imported ${count} results.`, 'success');
       } catch (err) {
         console.error('Import failed:', err);
-        alert('Failed to import data. Please check the file format.');
+        toast('Failed to import — check the file format.', 'error');
       }
     };
     input.click();
@@ -1008,7 +1018,7 @@ const App: React.FC = () => {
   const processCompositeFile = (file: File, setter: (val: string) => void, shouldDetectAspectRatio?: boolean) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      alert("Please upload an image file (JPEG or PNG).");
+      toast('Please upload a JPEG or PNG image.', 'error');
       return;
     }
     const reader = new FileReader();
@@ -1167,11 +1177,11 @@ const App: React.FC = () => {
       : [];
 
     if (bases.length === 0) {
-      alert("Please upload at least one interior scene photo.");
+      toast('Please upload at least one scene photo.', 'error');
       return;
     }
     if (!compositeArtwork) {
-      alert("Please upload artwork.");
+      toast('Please upload artwork.', 'error');
       return;
     }
 
@@ -1200,7 +1210,7 @@ const App: React.FC = () => {
       newResults.forEach(r => cloudStorageService.saveResult(r).catch(e => console.warn('Cloud save failed:', e)));
     } catch (e) {
       console.error("Composite generation failed:", e);
-      alert(`Composite generation failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+      toast(`Composite failed: ${e instanceof Error ? e.message : "Unknown error"}`, 'error');
     } finally {
       setIsCompositing(false);
     }
@@ -1210,7 +1220,7 @@ const App: React.FC = () => {
     const bases = deduplicatedBaseUrls;
 
     if (bases.length === 0) {
-      alert("Please upload at least one interior scene photo or select from the library.");
+      toast('Please upload or select a scene photo.', 'error');
       return;
     }
 
@@ -1225,7 +1235,7 @@ const App: React.FC = () => {
       artworks.push(compositeArtwork);
     }
     if (artworks.length === 0) {
-      alert("Please select artwork from the library or upload artwork.");
+      toast('Please select or upload artwork.', 'error');
       return;
     }
 
@@ -1273,7 +1283,7 @@ const App: React.FC = () => {
 
   const handleCompositeUpscale = async (result: MockupResult) => {
     if (!result.compositeBaseUrl || !result.compositeArtworkUrl) {
-      alert("Cannot upscale: missing source images. Re-generate instead.");
+      toast('Cannot enhance: source images missing.', 'error');
       return;
     }
     setUpscalingId(result.id);
@@ -1302,7 +1312,7 @@ const App: React.FC = () => {
       cloudStorageService.saveResult(newResult).catch(e => console.warn('Cloud save failed:', e));
     } catch (e) {
       console.error("Upscale failed:", e);
-      alert("Upscale failed.");
+      toast('Enhancement failed. Please try again.', 'error');
     } finally {
       setUpscalingId(null);
     }
@@ -1311,7 +1321,7 @@ const App: React.FC = () => {
   const handleCompositeRefine = async (result: MockupResult) => {
     if (!refinementText.trim()) return;
     if (!result.compositeArtworkUrl) {
-      alert("Cannot refine: missing artwork reference.");
+      toast('Cannot refine: missing artwork reference.', 'error');
       return;
     }
     setRefiningId(result.id);
@@ -1341,7 +1351,7 @@ const App: React.FC = () => {
       setExpandedRefinement(null);
     } catch (e) {
       console.error("Refinement failed:", e);
-      alert("Refinement failed.");
+      toast('Refinement failed.', 'error');
     } finally {
       setRefiningId(null);
     }
@@ -1362,18 +1372,15 @@ const App: React.FC = () => {
 
   const handleShowStorageStats = async () => {
     if (!storageInitialized) {
-      alert("Storage not initialized");
+      toast('Storage not initialized.', 'error');
       return;
     }
     try {
       const stats = await storageService.getStorageStats();
-      alert(`Storage Stats:\n\n` +
-            `Results: ${stats.count}\n` +
-            `Estimated Size: ${(stats.estimatedSizeKB / 1024).toFixed(2)} MB\n\n` +
-            `Tip: Export your data regularly as a backup!`);
+      toast(`Storage: ${stats.count} results · ${(stats.estimatedSizeKB / 1024).toFixed(2)} MB`, 'info');
     } catch (err) {
       console.error('Failed to get stats:', err);
-      alert('Failed to get storage statistics');
+      toast('Failed to get storage statistics.', 'error');
     }
   };
 
@@ -2379,6 +2386,17 @@ const App: React.FC = () => {
            <img src={lightboxImage} className="max-w-full max-h-full object-contain shadow-2xl" onClick={e => e.stopPropagation()} />
         </div>
       )}
+
+      {/* Toast notifications */}
+      <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-[9999] pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className={`pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium max-w-xs
+            ${t.type === 'error' ? 'bg-red-600 text-white' : t.type === 'success' ? 'bg-green-600 text-white' : 'bg-gray-800 text-white border border-gray-600'}`}>
+            <span className="flex-1">{t.message}</span>
+            <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="opacity-60 hover:opacity-100 text-lg leading-none">×</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
